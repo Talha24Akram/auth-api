@@ -1,6 +1,6 @@
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -50,6 +50,20 @@ def login(body: Credentials):
         "token_type": "bearer",
         "expires_in": res.session.expires_in,
     }
+
+
+@app.get("/public/info")
+def public_info():
+    return {"message": "Welcome stranger! This info is public."}
+
+
+@app.get("/protected/profile")
+def profile(authorization: str | None = Header(default=None)):
+    # Stage 2: only check that a token was presented (not yet verified).
+    parts = (authorization or "").split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return error(401, "Access token required")
+    return {"message": "token presented (not verified yet)"}
 
 
 if __name__ == "__main__":
