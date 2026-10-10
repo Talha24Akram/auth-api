@@ -1,12 +1,20 @@
 import os
 
-from fastapi import FastAPI, Header
-from fastapi.responses import JSONResponse
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, Response
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from supa import get_client
 
-app = FastAPI(title="Auth API", version="1.0")
+app = FastAPI(
+    title="Auth API",
+    version="1.0",
+    description="Sign up, log in and log out with Supabase Auth; routes guarded by a bearer-token dependency.",
+)
+bearer = HTTPBearer(auto_error=False, description="Paste the access_token from POST /auth/login")
 supabase = get_client()
 print("Server running and connected to Supabase")
 
@@ -18,6 +26,24 @@ class Credentials(BaseModel):
 
 def error(status: int, message: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"error": message})
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error(_, exc: StarletteHTTPException):
+    return error(exc.status_code, str(exc.detail))
+
+
+def current_user(creds: HTTPAuthorizationCredentials | None = Depends(bearer)):
+    """The guard: verify the bearer token with Supabase and inject the user."""
+    if creds is None or not creds.credentials:
+        raise HTTPException(status_code=401, detail="Access token required")
+    try:
+        user = supabase.auth.get_user(creds.credentials).user
+    except Exception:
+        user = None
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return user
 
 
 @app.get("/")
@@ -58,18 +84,19 @@ def public_info():
 
 
 @app.get("/protected/profile")
-def profile(authorization: str | None = Header(default=None)):
-    parts = (authorization or "").split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        return error(401, "Access token required")
-    try:
-        res = supabase.auth.get_user(parts[1])
-        user = res.user
-    except Exception:
-        user = None
-    if user is None:
-        return error(401, "Invalid or expired token")
+def profile(user=Depends(current_user)):
     return {"id": user.id, "email": user.email, "created_at": user.created_at.isoformat()}
+
+
+@app.get("/protected/dashboard")
+def dashboard(user=Depends(current_user)):
+    return {"message": f"Welcome back, {user.email}!"}
+
+
+@app.post("/auth/logout", status_code=204)
+def logout(user=Depends(current_user)):
+    supabase.auth.sign_out()
+    return Response(status_code=204)
 
 
 if __name__ == "__main__":
