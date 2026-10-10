@@ -59,11 +59,17 @@ def public_info():
 
 @app.get("/protected/profile")
 def profile(authorization: str | None = Header(default=None)):
-    # Stage 2: only check that a token was presented (not yet verified).
     parts = (authorization or "").split()
     if len(parts) != 2 or parts[0].lower() != "bearer":
         return error(401, "Access token required")
-    return {"message": "token presented (not verified yet)"}
+    try:
+        res = supabase.auth.get_user(parts[1])
+        user = res.user
+    except Exception:
+        user = None
+    if user is None:
+        return error(401, "Invalid or expired token")
+    return {"id": user.id, "email": user.email, "created_at": user.created_at.isoformat()}
 
 
 if __name__ == "__main__":
