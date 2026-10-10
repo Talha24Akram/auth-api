@@ -1,6 +1,8 @@
 import os
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from supa import get_client
 
@@ -9,9 +11,45 @@ supabase = get_client()
 print("Server running and connected to Supabase")
 
 
+class Credentials(BaseModel):
+    email: str | None = None
+    password: str | None = None
+
+
+def error(status: int, message: str) -> JSONResponse:
+    return JSONResponse(status_code=status, content={"error": message})
+
+
 @app.get("/")
 def root():
     return {"name": "Auth API", "docs": "/docs"}
+
+
+@app.post("/auth/signup", status_code=201)
+def signup(body: Credentials):
+    if not body.email or not body.password:
+        return error(400, "email and password are required")
+    try:
+        res = supabase.auth.sign_up({"email": body.email, "password": body.password})
+    except Exception as exc:  # Supabase rejects weak passwords, bad emails, duplicates
+        return error(400, str(exc))
+    return {"user": res.user.model_dump(mode="json") if res.user else None}
+
+
+@app.post("/auth/login")
+def login(body: Credentials):
+    if not body.email or not body.password:
+        return error(400, "email and password are required")
+    try:
+        res = supabase.auth.sign_in_with_password({"email": body.email, "password": body.password})
+    except Exception:
+        return error(401, "Invalid login credentials")
+    return {
+        "access_token": res.session.access_token,
+        "refresh_token": res.session.refresh_token,
+        "token_type": "bearer",
+        "expires_in": res.session.expires_in,
+    }
 
 
 if __name__ == "__main__":
