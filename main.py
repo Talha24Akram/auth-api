@@ -51,7 +51,7 @@ def root():
     return {"name": "Auth API", "docs": "/docs"}
 
 
-@app.post("/auth/signup", status_code=201)
+@app.post("/auth/signup", status_code=201, tags=["auth"], summary="Create an account", responses={400: {"description": "Missing/invalid email or password"}})
 def signup(body: Credentials):
     if not body.email or not body.password:
         return error(400, "email and password are required")
@@ -62,7 +62,7 @@ def signup(body: Credentials):
     return {"user": res.user.model_dump(mode="json") if res.user else None}
 
 
-@app.post("/auth/login")
+@app.post("/auth/login", tags=["auth"], summary="Log in and get a JWT", responses={400: {"description": "Missing fields"}, 401: {"description": "Invalid login credentials"}})
 def login(body: Credentials):
     if not body.email or not body.password:
         return error(400, "email and password are required")
@@ -78,22 +78,22 @@ def login(body: Credentials):
     }
 
 
-@app.get("/public/info")
+@app.get("/public/info", tags=["public"], summary="Open to everyone")
 def public_info():
     return {"message": "Welcome stranger! This info is public."}
 
 
-@app.get("/protected/profile")
+@app.get("/protected/profile", tags=["protected"], summary="Your profile (needs a valid token)", responses={401: {"description": "Missing, invalid or expired token"}})
 def profile(user=Depends(current_user)):
     return {"id": user.id, "email": user.email, "created_at": user.created_at.isoformat()}
 
 
-@app.get("/protected/dashboard")
+@app.get("/protected/dashboard", tags=["protected"], summary="Second guarded route (same dependency)", responses={401: {"description": "Missing, invalid or expired token"}})
 def dashboard(user=Depends(current_user)):
     return {"message": f"Welcome back, {user.email}!"}
 
 
-@app.post("/auth/logout", status_code=204)
+@app.post("/auth/logout", status_code=204, tags=["auth"], summary="Log out (needs a valid token)", responses={401: {"description": "Missing, invalid or expired token"}})
 def logout(user=Depends(current_user)):
     supabase.auth.sign_out()
     return Response(status_code=204)
